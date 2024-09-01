@@ -20,14 +20,15 @@ enum NoteContent {
     }
 }
 
-func parsed_blocks_finish(bs: inout note_blocks, tags: TagsSequence?) -> Blocks {
+// TODO: just make a blocks iterator over the compact data instead of using Blocks
+func parsed_blocks_finish(bs: inout ndb_blocks, tags: TagsSequence?) -> Blocks {
     var out: [Block] = []
 
     var i = 0
     while (i < bs.num_blocks) {
         let block = bs.blocks[i]
 
-        if let converted = Block(block, tags: tags) {
+        if let converted = Block(block: block, tags: tags) {
             out.append(converted)
         }
 
@@ -35,29 +36,44 @@ func parsed_blocks_finish(bs: inout note_blocks, tags: TagsSequence?) -> Blocks 
     }
 
     let words = Int(bs.words)
-    blocks_free(&bs)
 
     return Blocks(words: words, blocks: out)
 
 }
 
-func parse_note_content(content: NoteContent) -> Blocks {
-    var bs = note_blocks()
-    bs.num_blocks = 0;
-    
-    blocks_init(&bs)
+
+func parse_note_content(content: NoteContent) -> Blocks? {
+    // Step 1: Prepare the data you need to pass to the C function.
+    var buffer = [UInt8](repeating: 0, count: 1024*1024)  // Example buffer, replace size with what you need
+    let buf_size = Int32(buffer.count)
+    var ptr: OpaquePointer? = nil  // Pointer for the result
 
     switch content {
-    case .content(let s, let tags):
-        return s.withCString { cptr in
-            damus_parse_content(&bs, cptr)
-            return parsed_blocks_finish(bs: &bs, tags: tags)
+    case .note(let nostrEvent):
+        let len = Int32(nostrEvent.content_len)
+        let r = ndb_parse_content(&buffer, buf_size, nostrEvent.content_raw, len, &ptr)
+
+        if r != 0 {
+            let nil_tags: TagsSequence? = nil
+            let size = ndb_blocks_total_size(ptr)
+            let resized = buffer[0:size]
+            return Blocks.init(buffer: buffer[0:], blocks: <#T##NdbBlocks#>)
         }
-    case .note(let note):
-        damus_parse_content(&bs, note.content_raw)
-        return parsed_blocks_finish(bs: &bs, tags: note.tags)
+
+    case .content(let s, let tagsSequence):
+        let content_len = Int32(s.utf8.count)
+        let res = s.withCString { cptr in
+            ndb_parse_content(&buffer, buf_size, cptr, content_len, &blocks)
+        }
+
+        if res != 0 {
+            return parsed_blocks_finish(bs: blocks, tags: tagsSequence)
+        } else {
+            return nil
+        }
     }
 }
+
 
 func interpret_event_refs(tags: TagsSequence) -> ThreadReply? {
     // migration is long over, lets just do this to fix tests

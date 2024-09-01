@@ -246,10 +246,13 @@ struct ContentView: View {
         .ignoresSafeArea(.keyboard)
         .edgesIgnoringSafeArea(hide_bar ? [.bottom] : [])
         .onAppear() {
+            guard let damus_state else {
+                return
+            }
             self.connect()
             try? AVAudioSession.sharedInstance().setCategory(AVAudioSession.Category.playback, mode: .default, options: .mixWithOthers)
             setup_notifications()
-            if !hasSeenOnboardingSuggestions || damus_state!.settings.always_show_onboarding_suggestions {
+            if !hasSeenOnboardingSuggestions || damus_state.settings.always_show_onboarding_suggestions {
                 active_sheet = .onboardingSuggestions
                 hasSeenOnboardingSuggestions = true
             }
@@ -323,8 +326,11 @@ struct ContentView: View {
             self.hide_bar = !show
         }
         .onReceive(timer) { n in
-            self.damus_state?.postbox.try_flushing_events()
-            self.damus_state!.profiles.profile_data(self.damus_state!.pubkey).status.try_expire()
+            guard let damus_state else {
+                return
+            }
+            damus_state.postbox.try_flushing_events()
+            damus_state.profiles.profile_data(self.damus_state!.pubkey).status.try_expire()
         }
         .onReceive(handle_notify(.report)) { target in
             self.active_sheet = .report(target)
@@ -476,8 +482,8 @@ struct ContentView: View {
         .onReceive(handle_notify(.local_notification)) { local in
             guard let damus_state else { return }
 
-            switch local.mention {
-            case .pubkey(let pubkey):
+            switch local.mention.nip19 {
+            case .npub(let pubkey):
                 open_profile(pubkey: pubkey)
 
             case .note(let noteId):
@@ -489,6 +495,10 @@ struct ContentView: View {
             case .nrelay(_):
                 break
             case .naddr(let naddr):
+                break
+            case .nsec(_):
+                break
+            case .nscript(_):
                 break
             }
 
@@ -602,22 +612,25 @@ struct ContentView: View {
         self.selected_timeline = timeline
     }
 
+    func on_local_sub(subid: UInt64) {
+    }
+
     func connect() {
         // nostrdb
-        var mndb = Ndb()
-        if mndb == nil {
+        var ndb: Ndb? = Ndb()
+        if ndb?.open() == nil {
             // try recovery
             print("DB ISSUE! RECOVERING")
-            mndb = Ndb.safemode()
+            ndb = Ndb.safemode()
 
             // out of space or something?? maybe we need a in-memory fallback
-            if mndb == nil {
+            if ndb == nil {
                 logout(nil)
                 return
             }
         }
 
-        guard let ndb = mndb else { return  }
+        guard let ndb else { return  }
 
         let pool = RelayPool(ndb: ndb, keypair: keypair)
         let model_cache = RelayModelCache()
