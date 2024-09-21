@@ -51,6 +51,7 @@ struct PostView: View {
     @FocusState var focus: Bool
     @State var attach_media: Bool = false
     @State var attach_camera: Bool = false
+    @State var attach_gif: Bool = false
     @State var error: String? = nil
     @State var uploadedMedias: [UploadedMedia] = []
     @State var image_upload_confirm: Bool = false
@@ -167,10 +168,20 @@ struct PostView: View {
         })
     }
     
+    var GIFButton: some View {
+        Button(action: {
+            attach_gif = true
+        }, label: {
+            Image("GIF")
+                .padding(6)
+        })
+    }
+    
     var AttachmentBar: some View {
         HStack(alignment: .center, spacing: 15) {
             ImageButton
             CameraButton
+            GIFButton
         }
         .disabled(uploading_disabled)
     }
@@ -329,7 +340,7 @@ struct PostView: View {
             switch res {
             case .success(let url):
                 guard let url = URL(string: url) else {
-                    self.error = "Error uploading image :("
+                    self.error = UploadError.image_error.errorDescription
                     return
                 }
                 let blurhash = await blurhash
@@ -341,7 +352,7 @@ struct PostView: View {
                 if let error {
                     self.error = error.localizedDescription
                 } else {
-                    self.error = "Error uploading image :("
+                    self.error = UploadError.image_error.errorDescription
                 }
             }
             
@@ -462,6 +473,25 @@ struct PostView: View {
                     self.attach_camera = false
                     self.attach_media = true
                 }
+            }
+            .sheet(isPresented: $attach_gif) {
+                NostrBuildGIFGrid(damus_state: damus_state) { gifUrl in
+                    guard let url = URL(string: gifUrl) else {
+                        self.error = UploadError.gif_error.errorDescription
+                        return
+                    }
+                    self.preUploadedMedia = PreUploadedMedia.processed_image(url)
+                    if let media = generateMediaUpload(preUploadedMedia) {
+                        let img = getImage(media: media)
+                        Task {
+                            async let blurhash = calculate_blurhash(img: img)
+                            let meta = await blurhash.map { bh in calculate_image_metadata(url: url, img: img, blurhash: bh) }
+                            let uploadedMedia = UploadedMedia(localURL: media.localURL, uploadedURL: url, representingImage: img, metadata: meta)
+                            uploadedMedias.append(uploadedMedia)
+                        }
+                    }
+                }
+                .presentationDragIndicator(.visible)
             }
             .onAppear() {
                 let loaded_draft = load_draft()
@@ -602,6 +632,19 @@ struct UploadedMedia: Equatable {
     let metadata: ImageMetadata?
 }
 
+enum UploadError: LocalizedError {
+    case image_error
+    case gif_error
+    
+    var errorDescription: String? {
+        switch self {
+        case .image_error:
+            return NSLocalizedString("Error uploading image :(", comment: "Error message indicating that there was an error while uploading image.")
+        case .gif_error:
+            return NSLocalizedString("Error uploading gif :(", comment: "Error message indicating that there was an error while uploading gif.")
+        }
+    }
+}
 
 func set_draft_for_post(drafts: Drafts, action: PostAction, artifacts: DraftArtifacts) {
     switch action {
