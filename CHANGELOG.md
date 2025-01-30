@@ -1,3 +1,12 @@
+## [1.12.1] - 2025-01-31
+
+### Added
+
+- Purple members who have been active for more than a year now get a special badge (Daniel D’Aquino)
+
+[v1.12.1]: https://github.com/damus-io/damus/releases/tag/v1.12.1
+
+
 ## [1.12](https://github.com/damus-io/damus/releases/tag/v1.12) - 2024-12-20
 
 ### Added
