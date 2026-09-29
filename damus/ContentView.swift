@@ -10,6 +10,7 @@ import AVKit
 import MediaPlayer
 import EmojiPicker
 import TipKit
+import CoreSpotlight
 
 struct ZapSheet {
     let target: ZapTarget
@@ -132,6 +133,9 @@ struct ContentView: View {
     /// whole content view — and with it the timeline header — per frame.
     @State var headerOffset = HeaderOffsetModel()
     @State private var postingTimelineSource: TimelineSource = .follows
+    /// A search query handed to us by Spotlight's "Search in Damus" row, waiting
+    /// for ``SearchHomeView`` to pick it up. `nil` once consumed.
+    @State private var pendingSearchQuery: String? = nil
 
     // The three tabs' filter states live here rather than in the tab roots that
     // read them, because from iOS 26 on the control that drives them is the tab
@@ -273,7 +277,7 @@ struct ContentView: View {
                     }
 
                     timelineTab(.search, damus: damus) {
-                        SearchHomeView(damus_state: damus, model: SearchHomeModel(damus_state: damus))
+                        SearchHomeView(damus_state: damus, model: SearchHomeModel(damus_state: damus), pendingQuery: $pendingSearchQuery)
                             .scrollDismissesKeyboard(.immediately)
                     }
 
@@ -368,6 +372,10 @@ struct ContentView: View {
                 let open_action = await DamusURLHandler.handle_opening_url_and_compute_view_action(damus_state: self.damus_state, url: url)
                 self.execute_open_action(open_action)
             }
+        }
+        .onContinueUserActivity(CSQueryContinuationActionType) { activity in
+            guard let query = activity.userInfo?[CSSearchQueryString] as? String else { return }
+            self.open_search(query: query)
         }
         .onReceive(handle_notify(.compose)) { action in
             self.active_sheet = .post(action)
@@ -680,6 +688,19 @@ struct ContentView: View {
         }
 
         self.selected_timeline = timeline
+    }
+
+    /// Switches to the search tab at its root and runs `query` there.
+    ///
+    /// Used when Spotlight continues a search in Damus: the query is parked in
+    /// ``pendingSearchQuery`` so it lands even if the search tab has not been
+    /// built yet on a cold launch.
+    func open_search(query: String) {
+        self.isSideBarOpened = false
+        self.selected_timeline = .search
+        navigationCoordinator.activeTab = .search
+        navigationCoordinator.popToRoot(.search)
+        self.pendingSearchQuery = query
     }
 
     /// Listens to requests to open a push/local user notification

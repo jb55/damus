@@ -13,6 +13,9 @@ struct SearchHomeView: View {
     let damus_state: DamusState
     @StateObject var model: SearchHomeModel
     @State var search: String = ""
+    /// A query handed in from outside the view (Spotlight's "Search in Damus").
+    /// Copied into ``search`` and cleared once consumed.
+    @Binding var pendingQuery: String?
     @FocusState private var isFocused: Bool
 
     /// The advanced query the filter sheet edits.
@@ -179,15 +182,29 @@ struct SearchHomeView: View {
                 damus_state.nav.push(route: .AdvancedSearch(model: AdvancedSearchModel(damus_state: damus_state, query: advancedQuery)))
             })
         }
+        .onAppear {
+            consumePendingQuery()
+        }
+        .onChange(of: pendingQuery) { _ in
+            consumePendingQuery()
+        }
         .task {
             await model.load()
         }
+    }
+
+    /// Moves ``pendingQuery`` into the search field, if there is one.
+    private func consumePendingQuery() {
+        guard let query = pendingQuery else { return }
+        pendingQuery = nil
+        isFocused = false
+        search = query
     }
 }
 
 struct SearchHomeView_Previews: PreviewProvider {
     static var previews: some View {
         let state = test_damus_state
-        SearchHomeView(damus_state: state, model: SearchHomeModel(damus_state: state))
+        SearchHomeView(damus_state: state, model: SearchHomeModel(damus_state: state), pendingQuery: .constant(nil))
     }
 }
