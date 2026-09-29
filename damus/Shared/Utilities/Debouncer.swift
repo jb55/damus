@@ -50,4 +50,10 @@ class Debouncer {
 
         queue.asyncAfter(deadline: .now() + interval, execute: self.workItem!)
     }
+
+    /// Drops any pending action without running it.
+    func cancel() {
+        workItem?.cancel()
+        workItem = nil
+    }
 }

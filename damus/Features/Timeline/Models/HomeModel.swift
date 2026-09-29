@@ -214,6 +214,7 @@ class HomeModel: ContactsDelegate, ObservableObject {
     func latest_contact_event_changed(new_event: NostrEvent) {
         // When the latest user contact event has changed, save its ID so we know exactly where to find it next time
         damus_state.settings.latest_contact_event_id_hex = new_event.id.hex()
+        SpotlightIndexer.shared.schedule_index(state: damus_state)
     }
     
     // MARK: - Nostr event and subscription handling

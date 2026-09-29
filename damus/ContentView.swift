@@ -373,6 +373,12 @@ struct ContentView: View {
                 self.execute_open_action(open_action)
             }
         }
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            guard let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String,
+                  let pubkey = pubkey_from_spotlight_identifier(identifier)
+            else { return }
+            self.execute_open_action(.route(.ProfileByKey(pubkey: pubkey)))
+        }
         .onContinueUserActivity(CSQueryContinuationActionType) { activity in
             guard let query = activity.userInfo?[CSSearchQueryString] as? String else { return }
             self.open_search(query: query)
@@ -1295,6 +1301,7 @@ extension LossyLocalNotification {
 
 func logout(_ state: DamusState?)
 {
+    Task { @MainActor in SpotlightIndexer.shared.clear() }
     state?.close()
     notify(.logout)
 }
